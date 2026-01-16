@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Charming Stack 3D</title>
+<style>
+:root {
+  --bg1: #0b1020;
+  --bg2: #0f1730;
+  --text: #ffffff;
+  --shadow: rgba(0, 0, 0, 0.35);
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: linear-gradient(135deg, var(--bg1), var(--bg2));
+  background-size: 400% 400%;
+  animation: bgMove 20s ease infinite;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  font-family: "Arial", sans-serif;
+  overflow: hidden;
+}
+@keyframes bgMove {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+canvas {
+  border-radius: 18px;
+  box-shadow: 0 12px 40px var(--shadow);
+}
+.ui {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  color: var(--text);
+  font-size: 18px;
+  user-select: none;
+}
+.ui .score {
+  font-weight: 700;
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+.center-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  color: var(--text);
+  font-weight: 600;
+}
+.btn {
+  margin-top: 12px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 700;
+  transition: transform 0.1s ease, background 0.2s ease;
+}
+.btn:hover { background: rgba(255, 255, 255, 0.24); }
+.btn:active { transform: scale(0.98); }
+.leaderboard {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  color: #fff;
+  background: rgba(0,0,0,0.3);
+  padding: 12px;
+  border-radius: 12px;
+  font-size: 16px;
+}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div class="ui">
+  <div class="score" id="score">Score: 0</div>
+</div>
+
+<div class="leaderboard" id="leaderboard">
+  Leaderboard:
+</div>
+
+<div class="center-text" id="center">
+  <div id="message">Tap to Start</div>
+  <button class="btn" id="startBtn">Start</button>
+</div>
+
+<audio id="perfectSound" src="perfect.mp3" preload="auto"></audio>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const scoreEl = document.getElementById("score");
+const center = document.getElementById("center");
+const message = document.getElementById("message");
+const startBtn = document.getElementById("startBtn");
+const leaderboardEl = document.getElementById("leaderboard");
+const perfectSound = document.getElementById("perfectSound");
+
+let width = window.innerWidth;
+let height = window.innerHeight;
+canvas.width = width * 0.75;
+canvas.height = height * 0.75;
+
+let blocks = [];
+let current = null;
+let direction = 1;
+let speed = 3;
+let score = 0;
+let combo = 1;
+let gameOver = true;
+let cameraY = 0;
+let playerName = prompt("Enter your name:") || "Player";
+
+const colors = ["#ff4f81","#ffb84f","#4fffb8","#4fc9ff","#ffa1ff","#a1ff4f"];
+const sparkle = [];
+const trails = [];
+
+window.addEventListener("resize", ()=>{
+  width = window.innerWidth;
+  height = window.innerHeight;
+  canvas.width = width * 0.75;
+  canvas.height = height * 0.75;
+});
+
+function newBlock() {
+  const last = blocks[blocks.length-1];
+  const y = last ? last.y - 70 : canvas.height - 80;
+  const width = last ? last.width : 260;
+  const x = direction === 1 ? 0 : canvas.width - width;
+  const color = colors[Math.floor(Math.random()*colors.length)];
+  const offset = (Math.random() > 0.5) ? width/4 : 0; // brick pattern
+  return { x: x + offset, y, width, height: 60, color };
+}
+
+function startGame() {
+  blocks = [];
+  current = null;
+  direction = 1;
+  speed = 3;
+  score = 0;
+  combo = 1;
+  gameOver = false;
+  cameraY = 0;
+  blocks.push({ x:(canvas.width-260)/2, y:canvas.height-80, width:260, height:60, color:"#ffffff" });
+  current = newBlock();
+  updateUI();
+  center.style.display = "none";
+  loop();
+}
+
+function updateUI() {
+  scoreEl.textContent = `Score: ${score}`;
+}
+
+function updateLeaderboard(name, score) {
+  let scores = JSON.parse(localStorage.getItem('scores')||'{}');
+  if(!scores[name] || score > scores[name]) scores[name] = score;
+  localStorage.setItem('scores', JSON.stringify(scores));
+  leaderboardEl.innerHTML = '<strong>Leaderboard:</strong><br>';
+  Object.entries(scores)
+    .sort((a,b)=>b[1]-a[1])
+    .forEach(([player, s]) => leaderboardEl.innerHTML += `${player}: ${s}<br>`);
+}
+
+function dropBlock() {
+  if(gameOver) return;
+  const last = blocks[blocks.length-1];
+  const overlapLeft = Math.max(last.x, current.x);
+  const overlapRight = Math.min(last.x + last.width, current.x + current.width);
+  const overlap = overlapRight - overlapLeft;
+  if(overlap <= 0) return endGame();
+  
+  current.width = overlap;
+  current.x = overlapLeft;
+  
+  if(overlap >= current.width-2){
+    combo++;
+    score += 20 * combo;
+    sparkle.push({x:current.x + current.width/2, y:current.y+30, t:0});
+    perfectSound.currentTime = 0;
+    perfectSound.play();
+  } else {
+    combo = 1;
+    score += 10;
+  }
+
+  blocks.push(current);
+  cameraY += 70;
+  speed += 0.1;
+  current = newBlock();
+  updateUI();
+}
+
+function endGame() {
+  gameOver = true;
+  center.style.display = "block";
+  message.textContent = `Game Over! Score: ${score}`;
+  startBtn.textContent = "Try Again";
+  updateLeaderboard(playerName, score);
+}
+
+function update() {
+  if(gameOver) return;
+  current.x += speed*direction;
+
+  trails.push({x:current.x + current.width/2, y:current.y + current.height/2, t:0});
+  trails.forEach((t,i)=>{ t.t++; if(t.t>10) trails.splice(i,1); });
+
+  if(current.x + current.width > canvas.width) direction = -1;
+  if(current.x < 0) direction = 1;
+
+  sparkle.forEach((s,i)=>{ s.t++; if(s.t>20) sparkle.splice(i,1); });
+}
+
+function drawBlock(b){
+  const grad = ctx.createLinearGradient(b.x,b.y,b.x+b.width,b.y+b.height);
+  grad.addColorStop(0,b.color);
+  grad.addColorStop(1,"#fff5");
+  ctx.fillStyle = grad;
+  ctx.fillRect(b.x,b.y,b.width,b.height);
+  ctx.fillStyle="rgba(255,255,255,0.1)";
+  ctx.fillRect(b.x,b.y, b.width,6);
+  ctx.fillStyle="rgba(0,0,0,0.15)";
+  ctx.fillRect(b.x + b.width -6, b.y+6,6,b.height-6);
+  ctx.shadowColor="rgba(0,0,0,0.3)";
+  ctx.shadowBlur=12;
+}
+
+function draw() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.save();
+  ctx.translate(0,cameraY);
+
+  // draw trails
+  trails.forEach(t=>{
+    ctx.globalAlpha = 1 - t.t/10;
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, 3,0,Math.PI*2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  // draw blocks
+  blocks.forEach(drawBlock);
+  if(current) drawBlock(current);
+
+  // draw sparkles
+  sparkle.forEach(s=>{
+    const alpha = 1 - s.t/20;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = colors[Math.floor(Math.random()*colors.length)];
+    ctx.beginPath();
+    ctx.arc(s.x + Math.random()*6-3, s.y + Math.random()*6-3, 4 + s.t/3,0,Math.PI*2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  });
+
+  ctx.restore();
+}
+
+function loop(){
+  update();
+  draw();
+  if(!gameOver) requestAnimationFrame(loop);
+}
+
+canvas.addEventListener("click", dropBlock);
+canvas.addEventListener("touchstart",(e)=>{ e.preventDefault(); dropBlock(); });
+startBtn.addEventListener("click", startGame);
+
+</script>
+</body>
+</html>
