@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Charming Stack</title>
+<style>
+ :root {
+   --bg1: #0b1020;
+   --bg2: #0f1730;
+   --block1: #ff6b6b;
+   --block2: #ffcc66;
+   --block3: #6bffb3;
+   --block4: #6bd1ff;
+   --text: #ffffff;
+   --shadow: rgba(0, 0, 0, 0.35);
+ }
+ * { box-sizing: border-box; }
+ body {
+   margin: 0;
+   background: linear-gradient(135deg, var(--bg1), var(--bg2));
+   display: flex;
+   justify-content: center;
+   align-items: center;
+   height: 100vh;
+   font-family: "Arial", sans-serif;
+   overflow: hidden;
+ }
+ canvas {
+   border-radius: 18px;
+   box-shadow: 0 12px 40px var(--shadow);
+ }
+ .ui {
+   position: absolute;
+   top: 16px;
+   left: 16px;
+   color: var(--text);
+   font-size: 18px;
+   user-select: none;
+ }
+ .ui .score {
+   font-weight: 700;
+   font-size: 24px;
+   margin-bottom: 8px;
+ }
+ .center-text {
+   position: absolute;
+   top: 50%;
+   left: 50%;
+   transform: translate(-50%, -50%);
+   text-align: center;
+   color: var(--text);
+   font-weight: 600;
+ }
+ .btn {
+   margin-top: 12px;
+   padding: 10px 18px;
+   border-radius: 999px;
+   background: rgba(255, 255, 255, 0.18);
+   border: 1px solid rgba(255, 255, 255, 0.25);
+   color: var(--text);
+   cursor: pointer;
+   font-weight: 700;
+   transition: transform 0.1s ease, background 0.2s ease;
+ }
+ .btn:hover { background: rgba(255, 255, 255, 0.24); }
+ .btn:active { transform: scale(0.98); }
+ .combo {
+   position: absolute;
+   top: 16px;
+   right: 16px;
+   color: rgba(255,255,255,0.8);
+   font-weight: 700;
+   font-size: 18px;
+ }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div class="ui">
+<div class="score" id="score">Score: 0</div>
+<div class="combo" id="combo">Combo: x1</div>
+</div>
+<div class="center-text" id="center">
+<div id="message">Tap to Start</div>
+<button class="btn" id="startBtn">Start</button>
+</div>
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const scoreEl = document.getElementById("score");
+const comboEl = document.getElementById("combo");
+const center = document.getElementById("center");
+const message = document.getElementById("message");
+const startBtn = document.getElementById("startBtn");
+let width = window.innerWidth;
+let height = window.innerHeight;
+canvas.width = width * 0.75;
+canvas.height = height * 0.75;
+let blocks = [];
+let current = null;
+let direction = 1;
+let speed = 3;
+let score = 0;
+let combo = 1;
+let gameOver = true;
+let cameraY = 0;
+const colors = ["#ff6b6b", "#ffcc66", "#6bffb3", "#6bd1ff"];
+const sparkle = [];
+function resize() {
+ width = window.innerWidth;
+ height = window.innerHeight;
+ canvas.width = width * 0.75;
+ canvas.height = height * 0.75;
+}
+window.addEventListener("resize", resize);
+function newBlock() {
+ const last = blocks[blocks.length - 1];
+ const y = last ? last.y - 70 : canvas.height - 80;
+ const width = last ? last.width : 260;
+ const x = 0;
+ return { x, y, width, height: 60, color: colors[Math.floor(Math.random() * colors.length)] };
+}
+function startGame() {
+ blocks = [];
+ current = null;
+ direction = 1;
+ speed = 3;
+ score = 0;
+ combo = 1;
+ gameOver = false;
+ cameraY = 0;
+ blocks.push({ x: (canvas.width - 260) / 2, y: canvas.height - 80, width: 260, height: 60, color: "#ffffff" });
+ current = newBlock();
+ updateUI();
+ center.style.display = "none";
+ loop();
+}
+function updateUI() {
+ scoreEl.textContent = `Score: ${score}`;
+ comboEl.textContent = `Combo: x${combo}`;
+}
+function dropBlock() {
+ if (gameOver) return;
+ const last = blocks[blocks.length - 1];
+ const overlapLeft = Math.max(last.x, current.x);
+ const overlapRight = Math.min(last.x + last.width, current.x + current.width);
+ const overlap = overlapRight - overlapLeft;
+ if (overlap <= 0) {
+   endGame();
+   return;
+ }
+ if (overlap >= current.width - 2) {
+   combo++;
+   score += 20 * combo;
+   sparkle.push({ x: current.x + current.width / 2, y: current.y + 30, t: 0 });
+ } else {
+   combo = 1;
+   score += 10;
+ }
+ current.width = overlap;
+ current.x = overlapLeft;
+ blocks.push(current);
+ // move camera up
+ cameraY += 70;
+ speed += 0.1;
+ current = newBlock();
+ updateUI();
+}
+function endGame() {
+ gameOver = true;
+ center.style.display = "block";
+ message.textContent = `Game Over! Score: ${score}`;
+ startBtn.textContent = "Try Again";
+}
+function update() {
+ if (gameOver) return;
+ current.x += speed * direction;
+ if (current.x + current.width > canvas.width) {
+   direction = -1;
+ } else if (current.x < 0) {
+   direction = 1;
+ }
+ // sparkles update
+ for (let i = sparkle.length - 1; i >= 0; i--) {
+   sparkle[i].t += 1;
+   if (sparkle[i].t > 20) sparkle.splice(i, 1);
+ }
+}
+function draw() {
+ ctx.clearRect(0, 0, canvas.width, canvas.height);
+ ctx.save();
+ ctx.translate(0, cameraY);
+ // draw blocks
+ blocks.forEach((b, i) => {
+   ctx.fillStyle = b.color;
+   ctx.shadowColor = "rgba(0,0,0,0.5)";
+   ctx.shadowBlur = 10;
+   ctx.fillRect(b.x, b.y, b.width, b.height);
+ });
+ // draw current block
+ ctx.fillStyle = current.color;
+ ctx.shadowColor = "rgba(0,0,0,0.5)";
+ ctx.shadowBlur = 10;
+ ctx.fillRect(current.x, current.y, current.width, current.height);
+ // draw sparkles
+ sparkle.forEach(s => {
+   const alpha = 1 - s.t / 20;
+   ctx.globalAlpha = alpha;
+   ctx.fillStyle = "#fff";
+   ctx.beginPath();
+   ctx.arc(s.x, s.y, 4 + s.t / 5, 0, Math.PI * 2);
+   ctx.fill();
+   ctx.globalAlpha = 1;
+ });
+ ctx.restore();
+}
+function loop() {
+ update();
+ draw();
+ if (!gameOver) requestAnimationFrame(loop);
+}
+canvas.addEventListener("click", dropBlock);
+canvas.addEventListener("touchstart", (e) => {
+ e.preventDefault();
+ dropBlock();
+});
+startBtn.addEventListener("click", startGame);
+</script>
+</body>
+</html>
